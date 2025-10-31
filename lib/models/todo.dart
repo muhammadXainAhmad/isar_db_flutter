@@ -4,7 +4,7 @@ import 'package:isar_db/models/enums.dart';
 // execute command: flutter pub run build_runner build
 part 'todo.g.dart';
 
-@Collection()
+@Collection() // COLLECTIONS CAN'T HAVE CONSTRUCTORS ASSOCIATED WITH THEM
 class Todo {
   Id id = Isar.autoIncrement;
 
@@ -17,4 +17,13 @@ class Todo {
 
   @enumerated
   Status status = Status.pending;
+
+  Todo copyWith(String? content, Status? status) {
+    return Todo()
+      ..id = id
+      ..createdAt = createdAt
+      ..updatedAt = DateTime.now()
+      ..content = content ?? this.content
+      ..status = status ?? this.status;
+  }
 }

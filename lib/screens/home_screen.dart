@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:isar_db/models/enums.dart';
+import 'package:isar_db/models/todo.dart';
+import 'package:isar_db/services/database_service.dart';
 import 'package:isar_db/utils/colors.dart';
 import 'package:isar_db/widgets/text.dart';
 import 'package:isar_db/widgets/tile_button.dart';
@@ -12,15 +15,40 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  void _addOrEdit() {
-    TextEditingController contentController = TextEditingController();
-    Status status = Status.pending;
+  List<Todo> todos = [];
+  StreamSubscription? todosStream;
+  @override
+  void initState() {
+    super.initState();
+    // DatabaseService.db.todos.getAll();
+    // STREAM
+    todosStream = DatabaseService.db.todos
+        .buildQuery<Todo>()
+        .watch(fireImmediately: true)
+        .listen((data) {
+          setState(() {
+            todos = data;
+          });
+        });
+  }
+
+  @override
+  void dispose() {
+    todosStream?.cancel();
+    super.dispose();
+  }
+
+  void _addOrEdit({Todo? todo}) {
+    TextEditingController contentController = TextEditingController(
+      text: todo?.content ?? "",
+    );
+    Status status = todo?.status ?? Status.pending;
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: BuildText(
-            text: "Add Task",
+            text: todo != null ? "Edit Task" : "Add Task",
             textClr: blackClr,
             textSize: 22,
             textWeight: FontWeight.w500,
@@ -91,7 +119,22 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             TextButton(
-              onPressed: () {},
+              onPressed: () async {
+                if (contentController.text.isNotEmpty) {
+                  late Todo newTodo;
+                  if (todo != null) {
+                    newTodo = todo.copyWith(contentController.text, status);
+                  } else {
+                    newTodo = Todo().copyWith(contentController.text, status);
+                  }
+                  await DatabaseService.db.writeTxn(() async {
+                    await DatabaseService.db.todos.put(newTodo);
+                  });
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                }
+              },
               child: BuildText(
                 text: "Save",
                 textClr: blackClr,
@@ -109,7 +152,11 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: whiteClr,
-      appBar: AppBar(backgroundColor: whiteClr),
+      appBar: AppBar(
+        backgroundColor: whiteClr,
+        title: Text("ISAR DB"),
+        centerTitle: true,
+      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: blackClr,
         onPressed: _addOrEdit,
@@ -117,8 +164,9 @@ class _HomePageState extends State<HomePage> {
       ),
       body: SafeArea(
         child: ListView.builder(
-          itemCount: 20,
+          itemCount: todos.length,
           itemBuilder: (context, index) {
+            final todo = todos[index];
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
               child: Card(
@@ -129,18 +177,39 @@ class _HomePageState extends State<HomePage> {
                   ),
                   tileColor: greyClr,
                   title: BuildText(
-                    text: "To-Do ${index + 1}",
+                    text: todo.content!,
                     textClr: blackClr,
                     textSize: 16,
                     textWeight: FontWeight.w500,
+                  ),
+                  subtitle: BuildText(
+                    text:
+                        "Marked ${todo.status.name.toUpperCase()} at ${todo.updatedAt.year}-${todo.updatedAt.month}-${todo.updatedAt.day} \n${todo.updatedAt.hour}:${todo.updatedAt.minute}:${todo.updatedAt.second}",
+                    textClr: blackClr,
+                    textSize: 14,
+                    textWeight: FontWeight.w400,
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      TileButton(bgClr: blueClr, btnIcon: Icon(Icons.edit)),
-                      TileButton(bgClr: redClr, btnIcon: Icon(Icons.delete)),
+                      TileButton(
+                        bgClr: blueClr,
+                        btnIcon: Icon(Icons.edit),
+                        onPressed: () async {
+                          _addOrEdit(todo: todo);
+                        },
+                      ),
+                      TileButton(
+                        bgClr: redClr,
+                        btnIcon: Icon(Icons.delete),
+                        onPressed: () async {
+                          await DatabaseService.db.writeTxn(() async {
+                            await DatabaseService.db.todos.delete(todo.id);
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
